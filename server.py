@@ -27,16 +27,17 @@ client = OpenAI(
 )
 
 # -------------------------
-# Extract JSON safely
+# JSON Extractor
 # -------------------------
 def extract_json(text):
+    """Extracts first valid JSON object from raw model output."""
     try:
-        # Extract JSON between { ... }
+        # Find JSON-like structure
         match = re.search(r"\{[\s\S]*\}", text)
         if match:
             return json.loads(match.group())
-    except:
-        pass
+    except Exception as e:
+        print("⚠️ JSON parse error:", e)
 
     # fallback structure
     return {
@@ -60,10 +61,11 @@ def generate_plan():
         goal = data.get("goal", "")
 
         prompt = f"""
-        You are FlowMate AI. Based on the user's mood, energy, and goal,
-        generate 3–5 practical suggestions for each PAEI agent.
+        You are FlowMate AI. Based on user's mood, energy, and today's goal,
+        generate a PAEI task plan.
 
-        Response must be ONLY valid JSON:
+        The response MUST BE valid JSON:
+
         {{
           "agents": {{
             "producer": [...],
@@ -80,39 +82,50 @@ def generate_plan():
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": f"Mood: {mood}, Energy: {energy}, Goal: {goal}"}
             ],
-            temperature=0.7
+            temperature=0.6
         )
 
-        raw_output = response.choices[0].message["content"]
-        print("\n\n========== RAW DEEPSEEK OUTPUT ==========")
+        print("\n\n===== RAW API OBJECT =====")
+        print(response)
+        print("==========================\n\n")
+
+        # Support both response styles
+        if hasattr(response.choices[0].message, "content"):
+            raw_output = response.choices[0].message.content
+        else:
+            raw_output = response.choices[0].text
+
+        print("\n\n===== RAW DEEPSEEK OUTPUT =====")
         print(raw_output)
-        print("=========================================\n\n")
+        print("================================\n\n")
 
         result = extract_json(raw_output)
-
         return jsonify(result)
 
     except Exception as e:
-        print("🔥 Backend Error:", e)
+        print("\n🔥 ERROR in /api/generate-plan")
+        print(str(e))
+        print("================================\n")
         return jsonify({
             "agents": {
-                "producer": ["Server error occurred."],
+                "producer": [f"Backend error: {str(e)}"],
                 "administrator": [],
                 "entrepreneur": [],
                 "integrator": []
             }
         }), 500
 
+
 # -------------------------
-# Test Route
+# Root Test Route
 # -------------------------
 @app.route("/", methods=["GET"])
 def home():
     return "FlowMate DeepSeek Backend Running OK"
+
 
 # -------------------------
 # Run App
 # -------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
