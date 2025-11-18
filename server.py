@@ -11,7 +11,7 @@ CORS(app)
 
 # DeepSeek API Client
 client = OpenAI(
-    api_key=os.getenv("sk-0abb1be546144c2d9357bb8a5709c5a1"),
+    api_key=os.getenv("DEEPSEEK_API_KEY"),
     base_url="https://api.deepseek.com"
 )
 
@@ -82,3 +82,4 @@ def home():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
