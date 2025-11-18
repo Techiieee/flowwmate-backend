@@ -84,6 +84,10 @@ def generate_plan():
         )
 
         raw_output = response.choices[0].message["content"]
+        print("\n\n========== RAW DEEPSEEK OUTPUT ==========")
+        print(raw_output)
+        print("=========================================\n\n")
+
         result = extract_json(raw_output)
 
         return jsonify(result)
@@ -111,3 +115,4 @@ def home():
 # -------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
