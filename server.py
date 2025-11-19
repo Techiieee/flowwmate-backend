@@ -16,14 +16,14 @@ CORS(app)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not GEMINI_API_KEY:
-    print("❌ ERROR: Gemini API Key missing in environment variables!")
+    print("❌ ERROR: Gemini API Key missing!")
 else:
     print("✅ Gemini key loaded.")
 
 genai.configure(api_key=GEMINI_API_KEY)
 
-model = genai.GenerativeModel("gemini-1.5-flash")
-
+# FIXED MODEL ID (this was the error)
+model = genai.GenerativeModel("gemini-1.5-flash-latest")
 
 # -----------------------------
 # Generate Plan Endpoint
@@ -37,16 +37,11 @@ def generate_plan():
         goal = data.get("goal", "")
 
         prompt = f"""
-You are FlowMate AI. Based on the user's mood, energy level, and daily goal,
+You are FlowMate AI. Based on the user's mood, energy, and goal,
 generate 3–5 short actionable suggestions for each PAEI role.
 
-PAEI ROLES:
-- Producer → work tasks related to goal
-- Administrator → routine/admin tasks
-- Entrepreneur → creative/idea tasks
-- Integrator → self-care/social balance tasks
+Return ONLY this JSON (no explanations):
 
-Return ONLY a VALID JSON object like:
 {{
   "agents": {{
     "producer": ["...", "..."],
@@ -58,20 +53,15 @@ Return ONLY a VALID JSON object like:
 """
 
         response = model.generate_content(
-            [
-                {"role": "user", "parts": [{"text": f"Mood: {mood}, Energy: {energy}, Goal: {goal}"}]},
-                {"role": "system", "parts": [{"text": prompt}]}
-            ]
+            f"Mood: {mood}\nEnergy: {energy}\nGoal: {goal}\n\n{prompt}"
         )
 
         raw = response.text.strip()
 
-        # Gemini sometimes returns in a code block → clean it
         if raw.startswith("```"):
-            raw = raw.strip("```json").strip("```")
+            raw = raw.replace("```json", "").replace("```", "").strip()
 
         result = json.loads(raw)
-
         return jsonify(result)
 
     except Exception as e:
