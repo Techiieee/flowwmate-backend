@@ -1,52 +1,33 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import google.generativeai as genai
 import os
-import json
-import re
 from dotenv import load_dotenv
-from openai import OpenAI
+import json
 
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
-# -------------------------
-# Load OpenAI Key
-# -------------------------
-OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+# -----------------------------
+# Configure Gemini API
+# -----------------------------
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-if not OPENAI_KEY:
-    print("❌ ERROR: OPENAI_API_KEY not found in environment variables.")
+if not GEMINI_API_KEY:
+    print("❌ ERROR: Gemini API Key missing in environment variables!")
 else:
-    print("✅ OpenAI API key loaded.")
+    print("✅ Gemini key loaded.")
 
-client = OpenAI(api_key=OPENAI_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
 
-# -------------------------
-# JSON Extractor
-# -------------------------
-def extract_json(text):
-    """Extract JSON from AI output safely."""
-    try:
-        match = re.search(r"\{[\s\S]*\}", text)
-        if match:
-            return json.loads(match.group())
-    except Exception as e:
-        print("⚠️ JSON parse error:", e)
+model = genai.GenerativeModel("gemini-1.5-flash")
 
-    return {
-        "agents": {
-            "producer": ["Error generating tasks."],
-            "administrator": [],
-            "entrepreneur": [],
-            "integrator": []
-        }
-    }
 
-# -------------------------
-# Generate Plan API
-# -------------------------
+# -----------------------------
+# Generate Plan Endpoint
+# -----------------------------
 @app.route("/api/generate-plan", methods=["POST"])
 def generate_plan():
     try:
@@ -56,47 +37,45 @@ def generate_plan():
         goal = data.get("goal", "")
 
         prompt = f"""
-        You are FlowMate, an AI task planner.
-        Based on the user's mood, energy, and today's goal,
-        generate a structured PAEI plan.
+You are FlowMate AI. Based on the user's mood, energy level, and daily goal,
+generate 3–5 short actionable suggestions for each PAEI role.
 
-        Provide ONLY valid JSON in this format:
+PAEI ROLES:
+- Producer → work tasks related to goal
+- Administrator → routine/admin tasks
+- Entrepreneur → creative/idea tasks
+- Integrator → self-care/social balance tasks
 
-        {{
-          "agents": {{
-            "producer": ["task 1", "task 2", "task 3"],
-            "administrator": ["task 1", "task 2", "task 3"],
-            "entrepreneur": ["task 1", "task 2", "task 3"],
-            "integrator": ["task 1", "task 2", "task 3"]
-          }}
-        }}
-        """
+Return ONLY a VALID JSON object like:
+{{
+  "agents": {{
+    "producer": ["...", "..."],
+    "administrator": ["...", "..."],
+    "entrepreneur": ["...", "..."],
+    "integrator": ["...", "..."]
+  }}
+}}
+"""
 
-        print("\n🚀 Calling OpenAI GPT-4o-mini...\n")
-
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": f"Mood: {mood}, Energy: {energy}, Goal: {goal}"}
-            ],
-            temperature=0.6
+        response = model.generate_content(
+            [
+                {"role": "user", "parts": [{"text": f"Mood: {mood}, Energy: {energy}, Goal: {goal}"}]},
+                {"role": "system", "parts": [{"text": prompt}]}
+            ]
         )
 
-        raw_output = response.choices[0].message["content"]
+        raw = response.text.strip()
 
-        print("\n===== RAW OPENAI OUTPUT =====")
-        print(raw_output)
-        print("=============================\n")
+        # Gemini sometimes returns in a code block → clean it
+        if raw.startswith("```"):
+            raw = raw.strip("```json").strip("```")
 
-        data = extract_json(raw_output)
-        return jsonify(data)
+        result = json.loads(raw)
+
+        return jsonify(result)
 
     except Exception as e:
-        print("\n🔥 ERROR in /api/generate-plan")
-        print(str(e))
-        print("=================================\n")
-
+        print("Backend Error:", e)
         return jsonify({
             "agents": {
                 "producer": [f"Backend error: {str(e)}"],
@@ -107,16 +86,10 @@ def generate_plan():
         }), 500
 
 
-# -------------------------
-# Health Route
-# -------------------------
 @app.route("/", methods=["GET"])
 def home():
-    return "FlowMate OpenAI Backend Running OK"
+    return "🌸 FlowMate Gemini Backend Running!"
 
 
-# -------------------------
-# Run
-# -------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
