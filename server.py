@@ -1,10 +1,10 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from openai import OpenAI
 import os
 import json
 import re
 from dotenv import load_dotenv
+from openai import OpenAI
 
 load_dotenv()
 
@@ -12,34 +12,29 @@ app = Flask(__name__)
 CORS(app)
 
 # -------------------------
-# Load API Key
+# Load OpenAI Key
 # -------------------------
-DEEPSEEK_KEY = os.getenv("DEEPSEEK_API_KEY")
+OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 
-if not DEEPSEEK_KEY:
-    print("❌ ERROR: DeepSeek API key not found in environment variables.")
+if not OPENAI_KEY:
+    print("❌ ERROR: OPENAI_API_KEY not found in environment variables.")
 else:
-    print("✅ DeepSeek key loaded.")
+    print("✅ OpenAI API key loaded.")
 
-client = OpenAI(
-    api_key=DEEPSEEK_KEY,
-    base_url="https://api.deepseek.com"
-)
+client = OpenAI(api_key=OPENAI_KEY)
 
 # -------------------------
 # JSON Extractor
 # -------------------------
 def extract_json(text):
-    """Extracts first valid JSON object from raw model output."""
+    """Extract JSON from AI output safely."""
     try:
-        # Find JSON-like structure
         match = re.search(r"\{[\s\S]*\}", text)
         if match:
             return json.loads(match.group())
     except Exception as e:
         print("⚠️ JSON parse error:", e)
 
-    # fallback structure
     return {
         "agents": {
             "producer": ["Error generating tasks."],
@@ -50,7 +45,7 @@ def extract_json(text):
     }
 
 # -------------------------
-# Generate Plan Endpoint
+# Generate Plan API
 # -------------------------
 @app.route("/api/generate-plan", methods=["POST"])
 def generate_plan():
@@ -61,23 +56,26 @@ def generate_plan():
         goal = data.get("goal", "")
 
         prompt = f"""
-        You are FlowMate AI. Based on user's mood, energy, and today's goal,
-        generate a PAEI task plan.
+        You are FlowMate, an AI task planner.
+        Based on the user's mood, energy, and today's goal,
+        generate a structured PAEI plan.
 
-        The response MUST BE valid JSON:
+        Provide ONLY valid JSON in this format:
 
         {{
           "agents": {{
-            "producer": [...],
-            "administrator": [...],
-            "entrepreneur": [...],
-            "integrator": [...]
+            "producer": ["task 1", "task 2", "task 3"],
+            "administrator": ["task 1", "task 2", "task 3"],
+            "entrepreneur": ["task 1", "task 2", "task 3"],
+            "integrator": ["task 1", "task 2", "task 3"]
           }}
         }}
         """
 
+        print("\n🚀 Calling OpenAI GPT-4o-mini...\n")
+
         response = client.chat.completions.create(
-            model="deepseek-chat",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": f"Mood: {mood}, Energy: {energy}, Goal: {goal}"}
@@ -85,27 +83,20 @@ def generate_plan():
             temperature=0.6
         )
 
-        print("\n\n===== RAW API OBJECT =====")
-        print(response)
-        print("==========================\n\n")
+        raw_output = response.choices[0].message["content"]
 
-        # Support both response styles
-        if hasattr(response.choices[0].message, "content"):
-            raw_output = response.choices[0].message.content
-        else:
-            raw_output = response.choices[0].text
-
-        print("\n\n===== RAW DEEPSEEK OUTPUT =====")
+        print("\n===== RAW OPENAI OUTPUT =====")
         print(raw_output)
-        print("================================\n\n")
+        print("=============================\n")
 
-        result = extract_json(raw_output)
-        return jsonify(result)
+        data = extract_json(raw_output)
+        return jsonify(data)
 
     except Exception as e:
         print("\n🔥 ERROR in /api/generate-plan")
         print(str(e))
-        print("================================\n")
+        print("=================================\n")
+
         return jsonify({
             "agents": {
                 "producer": [f"Backend error: {str(e)}"],
@@ -117,15 +108,15 @@ def generate_plan():
 
 
 # -------------------------
-# Root Test Route
+# Health Route
 # -------------------------
 @app.route("/", methods=["GET"])
 def home():
-    return "FlowMate DeepSeek Backend Running OK"
+    return "FlowMate OpenAI Backend Running OK"
 
 
 # -------------------------
-# Run App
+# Run
 # -------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
